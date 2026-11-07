@@ -1,0 +1,46 @@
+name: Publish GitHub Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'scripts/build_wiki.py'
+      - '.github/workflows/publish-wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out documentation source
+        uses: actions/checkout@v4
+
+      - name: Generate native Wiki Markdown pages
+        run: python3 scripts/build_wiki.py docs wiki-output
+
+      - name: Publish to GitHub Wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          wiki="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.wiki.git"
+          if ! git clone --quiet "$wiki" .wiki-checkout; then
+            echo "::error::The native Wiki must be initialized first: open https://github.com/$GITHUB_REPOSITORY/wiki, create its first Home page, then rerun this workflow."
+            exit 1
+          fi
+          cp wiki-output/*.md .wiki-checkout/
+          cd .wiki-checkout
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '*.md'
+          if git diff --cached --quiet; then
+            echo 'Wiki already up to date.'
+            exit 0
+          fi
+          git commit -m "Update Hold My Items documentation wiki from $GITHUB_SHA"
+          git push origin HEAD
